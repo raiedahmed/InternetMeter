@@ -6,6 +6,10 @@ import { I18nContext, detectLang, makeI18n, type Key, type Lang } from './i18n';
 import Gauge from './components/Gauge';
 import DailyChart from './components/DailyChart';
 import SettingsDialog from './components/SettingsDialog';
+import { AppsView, HostsView, TimeView, TopApps } from './components/Details';
+
+type Tab = 'overview' | 'apps' | 'hosts' | 'time';
+const TABS: [Tab, Key][] = [['overview', 'tabOverview'], ['apps', 'tabApps'], ['hosts', 'tabHosts'], ['time', 'tabTime']];
 
 const ACTIVITIES: { name: Key; per: number; icon: string }[] = [
   { name: 'actYoutube', per: 1.5 * GB, icon: '▶' },
@@ -20,6 +24,7 @@ export default function App() {
   const [speed, setSpeed] = useState({ down: 0, up: 0 });
   const [now, setNow] = useState(() => new Date());
   const [dialog, setDialog] = useState(false);
+  const [tab, setTab] = useState<Tab>('overview');
   const [lang, setLang] = useState<Lang>(detectLang);
   const i18n = useMemo(() => makeI18n(lang), [lang]);
   const { t, fmtDate } = i18n;
@@ -84,6 +89,17 @@ export default function App() {
           </div>
         </header>
 
+        <nav className="tabs">
+          {TABS.map(([k, label]) => (
+            <button key={k} className={`tab ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)}>{t(label)}</button>
+          ))}
+        </nav>
+
+        {tab === 'apps' && <AppsView cycleStart={stats.startKey} />}
+        {tab === 'hosts' && <HostsView cycleStart={stats.startKey} />}
+        {tab === 'time' && <TimeView cycleStart={stats.startKey} />}
+
+        {tab === 'overview' && <>
         <div className={`banner ${banner.cls}`}>{banner.text}</div>
 
         <section className="hero card">
@@ -104,6 +120,8 @@ export default function App() {
           <Stat title={t('forecast')} value={fmtBytes(stats.projected)} hint={stats.projected > stats.quota ? t('overPlan') : t('withinPlan')} accent={stats.projected > stats.quota ? 'var(--red)' : undefined} />
         </section>
 
+        <TopApps onMore={() => setTab('apps')} />
+
         <section className="card">
           <h3>{t('dailyChart')}</h3>
           <DailyChart series={stats.series} safe={stats.dailySafe} />
@@ -121,6 +139,7 @@ export default function App() {
             ))}
           </div>
         </section>
+        </>}
 
         {dialog && (
           <SettingsDialog

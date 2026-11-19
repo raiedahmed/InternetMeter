@@ -3,11 +3,15 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const { Store } = require('./store.cjs');
 const { Monitor } = require('./monitor.cjs');
+const { Tracker } = require('./tracker.cjs');
+const { Names, compute } = require('./detail.cjs');
+const { execFile, spawn } = require('child_process');
 
 const isDev = process.argv.includes('--dev');
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
 
-let win, tray, store, monitor, calc;
+let win, tray, store, monitor, calc, tracker, names, isAdmin = false;
+const iconCache = new Map();
 let quitting = false;
 let lastCheck = 0;
 let speed = { down: 0, up: 0 };
@@ -97,9 +101,10 @@ function checkAlerts() {
 }
 
 function onSample({ down, up, dt }) {
-  store.add(calc.dateKey(), down, up);
+  store.add(calc.dateKey(), down, up, new Date().getHours());
   speed = dt > 0 ? { down: down / dt, up: up / dt } : speed;
-  const today = store.state.daily[calc.dateKey()] || { d: 0, u: 0 };
+  const t = store.state.daily[calc.dateKey()] || { d: 0, u: 0 };
+  const today = { d: t.d, u: t.u };
   if (win && !win.isDestroyed() && win.isVisible()) {
     win.webContents.send('tick', { downBps: speed.down, upBps: speed.up, todayKey: calc.dateKey(), today });
   }
@@ -108,9 +113,54 @@ function onSample({ down, up, dt }) {
   if (tray) tray.setToolTip(`↓ ${fmtSpeed(speed.down)}  ↑ ${fmtSpeed(speed.up)}`);
 }
 
+const ps = (cmd) => execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', cmd], { windowsHide: true }, () => {});
+const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+
 function applyAutoStart() {
   if (isDev) return;
-  app.setLoginItemSettings({ openAtLogin: !!store.state.settings.autoStart, args: ['--hidden'] });
+  const want = !!store.state.settings.autoStart;
+  if (isAdmin) {
+    // البرنامج يعمل كمسؤول (لتتبع التطبيقات)، ومفاتيح Run لا تُشغّل برامج مرتفعة الصلاحية، فنستخدم مهمة مجدولة
+    app.setLoginItemSettings({ openAtLogin: false });
+    if (want) {
+      ps(`$a=New-ScheduledTaskAction -Execute ${q(process.execPath)} -Argument '--hidden'; ` +
+        `$t=New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME; ` +
+        `$p=New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest -LogonType Interactive; ` +
+        `$s=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero); ` +
+        `Register-ScheduledTask -TaskName InternetMeter -Action $a -Trigger $t -Principal $p -Settings $s -Force`);
+    } else {
+      ps('Unregister-ScheduledTask -TaskName InternetMeter -Confirm:$false -ErrorAction SilentlyContinue');
+    }
+  } else {
+    app.setLoginItemSettings({ openAtLogin: want, args: ['--hidden'] });
+  }
+}
+
+/** إعادة تشغيل البرنامج بصلاحيات المسؤول (يظهر طلب UAC) */
+function relaunchAsAdmin() {
+  const args = process.argv.slice(1).filter((a) => a !== '--hidden');
+  const list = args.length ? ` -ArgumentList @(${args.map(q).join(',')})` : '';
+  spawn('powershell.exe', ['-NoProfile', '-Command',
+    `Start-Process -FilePath ${q(process.execPath)}${list} -WorkingDirectory ${q(process.cwd())} -Verb RunAs`],
+  { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  quitting = true;
+  app.quit();
+}
+
+const checkAdmin = () => new Promise((res) => execFile('net.exe', ['session'], { windowsHide: true }, (e) => res(!e)));
+
+function startTracking() {
+  names = new Names(store);
+  names.start();
+  tracker = new Tracker();
+  tracker.on('rows', (rows) => {
+    store.addApps(calc.dateKey(), rows);
+    for (const r of rows) names.observe(r.ip);
+  });
+  tracker.on('status', (s) => { if (win && !win.isDestroyed()) win.webContents.send('tracker', s); });
+  tracker.start();
+  setInterval(() => store.prune(), 10 * 60 * 1000);
+  store.prune();
 }
 
 app.whenReady().then(async () => {
@@ -118,9 +168,24 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   store = new Store(app.getPath('userData'));
 
-  ipcMain.handle('state:get', () => ({
-    settings: store.state.settings, daily: store.state.daily, todayKey: calc.dateKey(),
-  }));
+  isAdmin = await checkAdmin();
+
+  ipcMain.handle('state:get', () => {
+    const daily = {}; // الواجهة تحتاج الإجمالي فقط؛ التفاصيل تُطلب عند الحاجة
+    for (const [k, v] of Object.entries(store.state.daily)) daily[k] = { d: v.d, u: v.u };
+    return { settings: store.state.settings, daily, todayKey: calc.dateKey() };
+  });
+  ipcMain.handle('detail:get', (_e, from, to) => compute(store, names, from, to));
+  ipcMain.handle('tracker:status', () => ({ status: tracker ? tracker.status : 'starting', detail: tracker?.detail || '', admin: isAdmin }));
+  ipcMain.handle('admin:relaunch', () => relaunchAsAdmin());
+  ipcMain.handle('icon:get', async (_e, p) => {
+    if (!p) return '';
+    if (iconCache.has(p)) return iconCache.get(p);
+    let url = '';
+    try { url = (await app.getFileIcon(p, { size: 'small' })).toDataURL(); } catch { /* بلا أيقونة */ }
+    iconCache.set(p, url);
+    return url;
+  });
   ipcMain.handle('settings:save', (_e, patch) => {
     store.state.settings = { ...store.state.settings, ...patch, configured: true };
     store.touch(); store.save(); applyAutoStart(); lastCheck = 0;
@@ -136,9 +201,19 @@ app.whenReady().then(async () => {
   monitor.on('sample', onSample);
   monitor.on('error', (e) => console.error('monitor', e));
   monitor.start();
+  startTracking();
+  // للاختبارات الآلية: --exit-after=SECONDS يغلق البرنامج بعد مدة (مع حفظ البيانات)
+  const ex = process.argv.find((a) => a.startsWith('--exit-after='));
+  if (ex) setTimeout(() => { quitting = true; app.quit(); }, Number(ex.split('=')[1]) * 1000);
   setInterval(() => store.save(), 10000);
   applyAutoStart();
 });
 
-app.on('before-quit', () => { quitting = true; if (monitor) monitor.stop(); if (store) { store.touch(); store.save(); } });
+app.on('before-quit', () => {
+  quitting = true;
+  if (monitor) monitor.stop();
+  if (tracker) tracker.stop();
+  if (names) names.stop();
+  if (store) { store.touch(); store.save(); }
+});
 app.on('window-all-closed', () => { /* يبقى في شريط المهام */ });
