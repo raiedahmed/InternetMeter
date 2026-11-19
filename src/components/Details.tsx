@@ -7,6 +7,29 @@ export type Range = 'today' | '7d' | 'cycle' | '30d';
 const COLORS = ['#4f8cff', '#2ecc8f', '#f5a623', '#b074ff', '#ff6b9a', '#3ed0e6', '#9bd14b', '#ff8a5b'];
 const day = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+export function getAppCategory(name: string, exe: string) {
+  const s = `${name} ${exe}`.toLowerCase();
+  if (/chrome|firefox|edge|brave|opera|safari|browser/.test(s)) {
+    return { key: 'browsing', labelAr: 'تصفح إنترنت', labelEn: 'Browsing', icon: '🌐' };
+  }
+  if (/steam|epic|riot|valorant|game|origin|ubisoft|blizzard|battle\.net|minecraft|roblox/.test(s)) {
+    return { key: 'gaming', labelAr: 'ألعاب', labelEn: 'Gaming', icon: '🎮' };
+  }
+  if (/wuauserv|windowsupdate|tiworker|trustedinstaller|msiexec|deliveryoptimization/.test(s)) {
+    return { key: 'updates', labelAr: 'تحديثات النظام', labelEn: 'Updates', icon: '🔄' };
+  }
+  if (/discord|teams|zoom|telegram|whatsapp|skype|slack/.test(s)) {
+    return { key: 'social', labelAr: 'تواصل ومكالمات', labelEn: 'Communication', icon: '💬' };
+  }
+  if (/youtube|netflix|spotify|vlc|twitch|prime|media|video/.test(s)) {
+    return { key: 'streaming', labelAr: 'بث وفيديو', labelEn: 'Streaming', icon: '🎬' };
+  }
+  if (/svchost|system|explorer|spoolsv|lsass/.test(s)) {
+    return { key: 'system', labelAr: 'خدمات النظام', labelEn: 'System', icon: '⚙️' };
+  }
+  return { key: 'other', labelAr: 'تطبيقات أخرى', labelEn: 'Other', icon: '📦' };
+}
+
 export function rangeKeys(range: Range, cycleStart: string): [string, string] {
   const now = new Date();
   const back = (n: number) => day(new Date(now.getFullYear(), now.getMonth(), now.getDate() - n));
@@ -114,7 +137,7 @@ function Footer({ data }: { data: Detail }) {
 }
 
 export function AppsView({ cycleStart }: { cycleStart: string }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [range, setRange] = useState<Range>('today');
   const [open, setOpen] = useState<string | null>(null);
   const [from, to] = rangeKeys(range, cycleStart);
@@ -132,30 +155,45 @@ export function AppsView({ cycleStart }: { cycleStart: string }) {
             <table className="tbl">
               <thead><tr><th>{t('colApp')}</th><th className="n">{t('colDown')}</th><th className="n">{t('colUp')}</th><th className="n">{t('colTotal')}</th><th className="w">%</th></tr></thead>
               <tbody>
-                {data.apps.map((a, i) => (
-                  <Fragment key={a.key}>
-                    <tr key={a.key} className="clk" onClick={() => setOpen(open === a.key ? null : a.key)}>
-                      <td><div className="appcell"><AppIcon path={a.path} name={a.name} color={COLORS[i % COLORS.length]} />
-                        <div><div>{a.name}</div><div className="muted xs" dir="ltr">{a.exe}</div></div></div></td>
-                      <td className="n" dir="ltr">{fmtBytes(a.d)}</td>
-                      <td className="n" dir="ltr">{fmtBytes(a.u)}</td>
-                      <td className="n strong" dir="ltr">{fmtBytes(total(a))}</td>
-                      <td className="w"><ShareBar pct={(total(a) / sum) * 100} color={COLORS[i % COLORS.length]} /></td>
-                    </tr>
-                    {open === a.key && (
-                      <tr key={a.key + '-d'} className="sub"><td colSpan={5}>
-                        <div className="muted xs">{t('appHostsTitle')}</div>
-                        {a.hosts.map((h) => (
-                          <div key={h.host} className="hrow">
-                            <span className="hname" dir="ltr">{h.host === '*' ? t('other') : h.host}{h.lan && <em className="tag">{t('lan')}</em>}</span>
-                            <span className="hbar"><ShareBar pct={(total(h) / total(a)) * 100} color={COLORS[i % COLORS.length]} /></span>
-                            <span className="hval" dir="ltr">{fmtBytes(total(h))}</span>
+                {data.apps.map((a, i) => {
+                  const cat = getAppCategory(a.name, a.exe);
+                  return (
+                    <Fragment key={a.key}>
+                      <tr key={a.key} className="clk" onClick={() => setOpen(open === a.key ? null : a.key)}>
+                        <td>
+                          <div className="appcell">
+                            <AppIcon path={a.path} name={a.name} color={COLORS[i % COLORS.length]} />
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span>{a.name}</span>
+                                <span className="pill" style={{ fontSize: '0.68rem', padding: '1px 5px', opacity: 0.9 }}>
+                                  {cat.icon} {lang === 'ar' ? cat.labelAr : cat.labelEn}
+                                </span>
+                              </div>
+                              <div className="muted xs" dir="ltr">{a.exe}</div>
+                            </div>
                           </div>
-                        ))}
-                      </td></tr>
-                    )}
-                  </Fragment>
-                ))}
+                        </td>
+                        <td className="n" dir="ltr">{fmtBytes(a.d)}</td>
+                        <td className="n" dir="ltr">{fmtBytes(a.u)}</td>
+                        <td className="n strong" dir="ltr">{fmtBytes(total(a))}</td>
+                        <td className="w"><ShareBar pct={(total(a) / sum) * 100} color={COLORS[i % COLORS.length]} /></td>
+                      </tr>
+                      {open === a.key && (
+                        <tr key={a.key + '-d'} className="sub"><td colSpan={5}>
+                          <div className="muted xs">{t('appHostsTitle')}</div>
+                          {a.hosts.map((h) => (
+                            <div key={h.host} className="hrow">
+                              <span className="hname" dir="ltr">{h.host === '*' ? t('other') : h.host}{h.lan && <em className="tag">{t('lan')}</em>}</span>
+                              <span className="hbar"><ShareBar pct={(total(h) / total(a)) * 100} color={COLORS[i % COLORS.length]} /></span>
+                              <span className="hval" dir="ltr">{fmtBytes(total(h))}</span>
+                            </div>
+                          ))}
+                        </td></tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
             <Footer data={data} />
@@ -255,7 +293,7 @@ export function TimeView({ cycleStart }: { cycleStart: string }) {
 
 /** بطاقة "أين ذهب استهلاك اليوم" للصفحة الرئيسية */
 export function TopApps({ onMore }: { onMore(): void }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const k = day(new Date());
   const data = useDetail(k, k);
   const sum = data ? data.apps.reduce((s, a) => s + total(a), 0) : 0;
@@ -264,14 +302,22 @@ export function TopApps({ onMore }: { onMore(): void }) {
       <div className="rowbar"><h3>{t('topToday')}</h3><button className="btn ghost sm" onClick={onMore}>{t('seeAll')}</button></div>
       {!data || data.apps.length === 0 ? <TrackerBanner /> : (
         <div>
-          {data.apps.slice(0, 5).map((a, i) => (
-            <div key={a.key} className="toprow">
-              <AppIcon path={a.path} name={a.name} color={COLORS[i]} />
-              <span className="tname">{a.name}</span>
-              <span className="hbar"><ShareBar pct={(total(a) / sum) * 100} color={COLORS[i]} /></span>
-              <span className="hval" dir="ltr">{fmtBytes(total(a))}</span>
-            </div>
-          ))}
+          {data.apps.slice(0, 5).map((a, i) => {
+            const cat = getAppCategory(a.name, a.exe);
+            return (
+              <div key={a.key} className="toprow">
+                <AppIcon path={a.path} name={a.name} color={COLORS[i]} />
+                <span className="tname" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>{a.name}</span>
+                  <span className="pill" style={{ fontSize: '0.65rem', padding: '0 4px', opacity: 0.85 }}>
+                    {cat.icon} {lang === 'ar' ? cat.labelAr : cat.labelEn}
+                  </span>
+                </span>
+                <span className="hbar"><ShareBar pct={(total(a) / sum) * 100} color={COLORS[i]} /></span>
+                <span className="hval" dir="ltr">{fmtBytes(total(a))}</span>
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
