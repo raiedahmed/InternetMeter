@@ -9,8 +9,4 @@ export function fmtBytes(b: number, digits = 2): string {
 
 export const fmtSpeed = (b: number) => fmtBytes(b, 1) + '/s';
 
-const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-export const fmtDate = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]}`;
-export const fmtDateTime = (d: Date) =>
-  `${fmtDate(d)} الساعة ${d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}`;
 export const fromKey = (k: string) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };

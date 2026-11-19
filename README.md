@@ -35,6 +35,7 @@
 | 🎚️ **معايرة مع شركة الإنترنت** | أدخل الرقم الذي تعرضه شركتك فيتم ضبط العدّاد عليه. |
 | 📈 **رسم بياني يومي** | استهلاك كل يوم في الدورة مقابل الحصة الآمنة. |
 | 🧷 **يعمل في الخلفية** | أيقونة في شريط المهام، وتشغيل تلقائي اختياري مع ويندوز. |
+| 🌐 **ثنائي اللغة** | عربي وإنجليزي بتبديل فوري (واجهة RTL/LTR)، وتُحفظ لغتك وتشمل التنبيهات وقائمة الأيقونة. |
 | 🔒 **خصوصية كاملة** | كل البيانات على جهازك فقط، بلا حسابات ولا خوادم. |
 
 ### 📥 التثبيت
@@ -74,6 +75,7 @@
 - **Alerts** – native Windows notifications at 50 / 80 / 90 / 95 % (configurable).
 - **What does the remainder mean?** – converted to hours of video, calls, movies.
 - **ISP calibration** – type the figure your provider shows and the meter syncs to it.
+- **Bilingual** – Arabic (RTL) and English (LTR), switch instantly; applies to notifications and the tray menu too.
 - **Daily chart**, **tray icon**, optional **start with Windows**.
 - **100 % local** – no accounts, no servers, no telemetry.
 

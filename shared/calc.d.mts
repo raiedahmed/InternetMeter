@@ -7,6 +7,7 @@ export interface Settings {
   alerts: number[];
   autoStart: boolean;
   configured: boolean;
+  lang?: 'ar' | 'en';
 }
 export type Daily = Record<string, { d: number; u: number }>;
 export interface Stats {
