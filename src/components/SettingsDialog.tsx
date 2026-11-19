@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { GB, cycleBounds, dateKey, type Settings, type Stats } from '../../shared/calc.mjs';
-import { useI18n, type Lang } from '../i18n';
+import { useI18n, type Key, type Lang } from '../i18n';
 
 interface Props {
   settings: Settings;
@@ -10,47 +10,65 @@ interface Props {
   onSave(patch: Partial<Settings>): void;
 }
 
+function Section({ icon, title, children }: { icon: string; title: string; children: ReactNode }) {
+  return (
+    <section className="sec">
+      <h3><span className="sec-ic">{icon}</span>{title}</h3>
+      <div className="sec-body">{children}</div>
+    </section>
+  );
+}
+
+function Field({ label, hint, error, children, wide }: { label: string; hint?: string; error?: string; children: ReactNode; wide?: boolean }) {
+  return (
+    <label className={`fld ${wide ? 'wide' : ''}`}>
+      <span className="fld-l">{label}</span>
+      {children}
+      {error ? <span className="fld-e">{error}</span> : hint ? <span className="note">{hint}</span> : null}
+    </label>
+  );
+}
+
+function Switch({ checked, onChange, title, desc }: { checked: boolean; onChange(v: boolean): void; title: string; desc?: string }) {
+  return (
+    <label className="sw">
+      <span className="sw-t"><b>{title}</b>{desc && <small>{desc}</small>}</span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <i aria-hidden />
+    </label>
+  );
+}
+
 export default function SettingsDialog({ settings, stats, firstRun, onCancel, onSave }: Props) {
-  const { t, lang } = useI18n();
+  const { t, lang, fmtHour } = useI18n();
   const [newLang, setNewLang] = useState<Lang>(lang);
   const [quota, setQuota] = useState(String(settings.quotaGB));
   const [day, setDay] = useState(String(settings.cycleDay));
   const [isp, setIsp] = useState('');
   const [alerts, setAlerts] = useState<number[]>(settings.alerts);
   const [autoStart, setAutoStart] = useState(settings.autoStart);
-
-  // New settings states
   const [showWidget, setShowWidget] = useState(!!settings.showWidget);
   const [leakAlert, setLeakAlert] = useState(settings.leakAlert ?? true);
   const [cost, setCost] = useState(settings.cost ? String(settings.cost) : '');
   const [currency, setCurrency] = useState(settings.currency || (lang === 'en' ? 'EGP' : 'ج.م'));
   const [nightEnabled, setNightEnabled] = useState(!!settings.nightEnabled);
-  const [nightStart, setNightStart] = useState(String(settings.nightStart ?? 2));
-  const [nightEnd, setNightEnd] = useState(String(settings.nightEnd ?? 8));
-  const [nightDeduct, setNightDeduct] = useState(!!settings.nightDeduct);
+  const [nightStart, setNightStart] = useState(settings.nightStart ?? 2);
+  const [nightEnd, setNightEnd] = useState(settings.nightEnd ?? 8);
+  const [nightFree, setNightFree] = useState(!settings.nightDeduct);
   const [ecoMode, setEcoMode] = useState(!!settings.ecoMode);
 
   const toggle = (v: number) => setAlerts((a) => (a.includes(v) ? a.filter((x) => x !== v) : [...a, v]));
   const q = Number(quota), d = Number(day);
-  const valid = q > 0 && Number.isInteger(d) && d >= 1 && d <= 31;
+  const quotaOk = q > 0, dayOk = Number.isInteger(d) && d >= 1 && d <= 31;
+  const valid = quotaOk && dayOk;
 
   const save = () => {
     const patch: Partial<Settings> = {
-      quotaGB: q,
-      cycleDay: d,
-      alerts,
-      autoStart,
-      lang: newLang,
-      showWidget,
-      leakAlert,
-      cost: cost ? Number(cost) : 0,
-      currency,
-      nightEnabled,
-      nightStart: Number(nightStart),
-      nightEnd: Number(nightEnd),
-      nightDeduct,
-      ecoMode,
+      quotaGB: q, cycleDay: d, alerts, autoStart, lang: newLang, showWidget, leakAlert,
+      cost: cost ? Number(cost) : 0, currency,
+      nightEnabled, nightStart, nightEnd, nightDeduct: !nightFree, ecoMode,
     };
+    // معايرة مع رقم شركة الإنترنت: الفرق عمّا قاسه البرنامج يُحفظ كإزاحة للدورة الحالية
     if (isp.trim() !== '' && Number(isp) >= 0) {
       const { start } = cycleBounds(d, new Date());
       patch.offset = { cycle: dateKey(start), bytes: Number(isp) * GB - stats.tracked };
@@ -58,94 +76,91 @@ export default function SettingsDialog({ settings, stats, firstRun, onCancel, on
     onSave(patch);
   };
 
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const HourSelect = ({ value, onChange }: { value: number; onChange(v: number): void }) => (
+    <select value={value} onChange={(e) => onChange(Number(e.target.value))}>
+      {hours.map((h) => <option key={h} value={h}>{fmtHour(h)}</option>)}
+    </select>
+  );
+
+  const switchLang = (l: Lang) => {
+    setNewLang(l);
+    if (!cost) setCurrency(l === 'ar' ? 'ج.م' : 'EGP');
+  };
+
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && !firstRun && onCancel()}>
-      <div className="dialog" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
-        <h2>{firstRun ? t('welcome') : t('settingsTitle')}</h2>
+      <div className="dialog wide-dialog" role="dialog" aria-modal="true">
+        <header className="dlg-head">
+          <h2>{firstRun ? t('welcome') : t('settingsTitle')}</h2>
+          {!firstRun && <button className="x" onClick={onCancel} aria-label={t('close' as Key)}>✕</button>}
+        </header>
 
-        <label>{t('quota')}
-          <input type="number" min="1" value={quota} onChange={(e) => setQuota(e.target.value)} autoFocus />
-        </label>
-        <label>{t('renewDay')}
-          <input type="number" min="1" max="31" value={day} onChange={(e) => setDay(e.target.value)} />
-        </label>
-        <label>{t('ispUsage')}
-          <input type="number" min="0" step="0.01" placeholder={t('ispPlaceholder')} value={isp} onChange={(e) => setIsp(e.target.value)} />
-          <span className="note">{t('ispNote')}</span>
-        </label>
-
-        <div className="lbl">{t('alertsAt')}</div>
-        <div className="chips">
-          {[50, 80, 90, 95].map((v) => (
-            <button key={v} type="button" className={`chip ${alerts.includes(v) ? 'on' : ''}`} onClick={() => toggle(v)}>{v}%</button>
-          ))}
-        </div>
-
-        <div className="lbl">{t('language')}</div>
-        <div className="chips">
-          <button type="button" className={`chip ${newLang === 'ar' ? 'on' : ''}`} onClick={() => { setNewLang('ar'); if (!cost) setCurrency('ج.م'); }}>العربية</button>
-          <button type="button" className={`chip ${newLang === 'en' ? 'on' : ''}`} onClick={() => { setNewLang('en'); if (!cost) setCurrency('EGP'); }}>English</button>
-        </div>
-
-        <div className="settings-section">
-          <div className="lbl" style={{ marginTop: 14 }}>{t('costTitle')}</div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <label style={{ flex: 2 }}>{t('planCost')}
-              <input type="number" min="0" placeholder="مثال: 250" value={cost} onChange={(e) => setCost(e.target.value)} />
-            </label>
-            <label style={{ flex: 1 }}>{t('currency')}
-              <input type="text" value={currency} onChange={(e) => setCurrency(e.target.value)} />
-            </label>
-          </div>
-        </div>
-
-        <div className="settings-section">
-          <div className="lbl" style={{ marginTop: 14 }}>{t('nightTitle')}</div>
-          <label className="check">
-            <input type="checkbox" checked={nightEnabled} onChange={(e) => setNightEnabled(e.target.checked)} />
-            {t('nightEnabled')}
-          </label>
-          {nightEnabled && (
-            <div style={{ paddingInlineStart: 24, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <label style={{ flex: 1 }}>من الساعة
-                  <input type="number" min="0" max="23" value={nightStart} onChange={(e) => setNightStart(e.target.value)} />
-                </label>
-                <label style={{ flex: 1 }}>إلى الساعة
-                  <input type="number" min="0" max="23" value={nightEnd} onChange={(e) => setNightEnd(e.target.value)} />
-                </label>
-              </div>
-              <label className="check">
-                <input type="checkbox" checked={!nightDeduct} onChange={(e) => setNightDeduct(!e.target.checked)} />
-                {t('nightFree')}
-              </label>
+        <div className="dlg-body">
+          <Section icon="📦" title={t('secPlan' as Key)}>
+            <div className="grid2">
+              <Field label={t('quota')} error={quotaOk ? undefined : t('quotaInvalid' as Key)}>
+                <div className="unit"><input type="number" min="1" className={quotaOk ? '' : 'bad'} value={quota} onChange={(e) => setQuota(e.target.value)} autoFocus /><em>GB</em></div>
+              </Field>
+              <Field label={t('renewDay')} hint={t('renewHint' as Key)} error={dayOk ? undefined : t('dayInvalid' as Key)}>
+                <input type="number" min="1" max="31" className={dayOk ? '' : 'bad'} value={day} onChange={(e) => setDay(e.target.value)} />
+              </Field>
+              <Field wide label={t('ispUsage')} hint={t('ispNote')}>
+                <div className="unit"><input type="number" min="0" step="0.01" placeholder={t('ispPlaceholder')} value={isp} onChange={(e) => setIsp(e.target.value)} /><em>GB</em></div>
+              </Field>
             </div>
-          )}
+          </Section>
+
+          <Section icon="🔔" title={t('secAlerts' as Key)}>
+            <div className="fld-l">{t('alertsAt')}</div>
+            <div className="chips">
+              {[50, 80, 90, 95].map((v) => (
+                <button key={v} type="button" className={`chip ${alerts.includes(v) ? 'on' : ''}`} onClick={() => toggle(v)}>{v}%</button>
+              ))}
+            </div>
+            <Switch checked={leakAlert} onChange={setLeakAlert} title={t('leakAlert')} desc={t('leakDesc' as Key)} />
+            <Switch checked={ecoMode} onChange={setEcoMode} title={t('ecoMode')} desc={t('ecoModeDesc')} />
+          </Section>
+
+          <Section icon="🌙" title={t('secNight' as Key)}>
+            <Switch checked={nightEnabled} onChange={setNightEnabled} title={t('nightEnabled')} desc={t('nightDesc' as Key)} />
+            {nightEnabled && (
+              <>
+                <div className="grid2">
+                  <Field label={t('fromHour' as Key)}><HourSelect value={nightStart} onChange={setNightStart} /></Field>
+                  <Field label={t('toHour' as Key)}><HourSelect value={nightEnd} onChange={setNightEnd} /></Field>
+                </div>
+                <Switch checked={nightFree} onChange={setNightFree} title={t('nightFree')} />
+              </>
+            )}
+          </Section>
+
+          <Section icon="💰" title={t('secMoney' as Key)}>
+            <div className="grid2 money">
+              <Field label={t('planCost')} hint={t('costDesc' as Key)}>
+                <input type="number" min="0" placeholder={t('costPlaceholder' as Key)} value={cost} onChange={(e) => setCost(e.target.value)} />
+              </Field>
+              <Field label={t('currency')}>
+                <input type="text" maxLength={8} value={currency} onChange={(e) => setCurrency(e.target.value)} />
+              </Field>
+            </div>
+          </Section>
+
+          <Section icon="⚙️" title={t('secApp' as Key)}>
+            <div className="fld-l">{t('language')}</div>
+            <div className="seg">
+              <button type="button" className={newLang === 'ar' ? 'on' : ''} onClick={() => switchLang('ar')}>العربية</button>
+              <button type="button" className={newLang === 'en' ? 'on' : ''} onClick={() => switchLang('en')}>English</button>
+            </div>
+            <Switch checked={showWidget} onChange={setShowWidget} title={t('widgetTitle')} desc={t('widgetDesc')} />
+            <Switch checked={autoStart} onChange={setAutoStart} title={t('autoStart')} desc={t('autoStartDesc' as Key)} />
+          </Section>
         </div>
 
-        <div className="settings-section" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-          <label className="check">
-            <input type="checkbox" checked={showWidget} onChange={(e) => setShowWidget(e.target.checked)} />
-            <span><b>{t('widgetTitle')}</b> — <span className="muted">{t('widgetDesc')}</span></span>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={leakAlert} onChange={(e) => setLeakAlert(e.target.checked)} />
-            <span><b>{t('leakAlert')}</b></span>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={ecoMode} onChange={(e) => setEcoMode(e.target.checked)} />
-            <span><b>{t('ecoMode')}</b> — <span className="muted">{t('ecoModeDesc')}</span></span>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={autoStart} onChange={(e) => setAutoStart(e.target.checked)} />
-            {t('autoStart')}
-          </label>
-        </div>
-
-        <div className="actions" style={{ marginTop: 18 }}>
+        <footer className="dlg-foot">
           {!firstRun && <button className="btn ghost" onClick={onCancel}>{t('cancel')}</button>}
           <button className="btn primary" disabled={!valid} onClick={save}>{t('save')}</button>
-        </div>
+        </footer>
       </div>
     </div>
   );
