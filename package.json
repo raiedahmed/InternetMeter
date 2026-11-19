@@ -1,0 +1,64 @@
+{
+  "name": "internet-meter",
+  "productName": "عدّاد الإنترنت",
+  "version": "0.1.0",
+  "description": "برنامج ويندوز لحساب استهلاك الإنترنت ومتابعة الباقة الشهرية",
+  "main": "electron/main.cjs",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron . --dev\"",
+    "web": "vite",
+    "start": "vite build && electron .",
+    "build": "tsc --noEmit && vite build && electron-builder --win",
+    "typecheck": "tsc --noEmit",
+    "dist": "vite build && electron-builder --win --publish never"
+  },
+  "build": {
+    "appId": "com.raied.internetmeter",
+    "productName": "عدّاد الإنترنت",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "shared/**",
+      "assets/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png",
+      "artifactName": "InternetMeter-Setup-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "عدّاد الإنترنت",
+      "createDesktopShortcut": true
+    },
+    "directories": {
+      "output": "release"
+    },
+    "executableName": "InternetMeter"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "concurrently": "^10.0.7",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "wait-on": "^9.5.1"
+  },
+  "author": "raiedahmed",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/raiedahmed/InternetMeter.git"
+  },
+  "homepage": "https://github.com/raiedahmed/InternetMeter"
+}
