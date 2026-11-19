@@ -54,8 +54,15 @@
 | الميزة | الوصف الفني والوظيفي |
 | :--- | :--- |
 | ⚡ **عدّاد فوري مباشر** | قياس لحظي لسرعة التحميل (Download) والرفع (Upload) بالثانية مع إجمالي استهلاك اليوم. |
+| 🪟 **ويدجت عائم على سطح المكتب** | ويدجت مصغر شفاف ودائم في المقدمة (Always-on-top) قابل للسحب، يعرض السرعة الحالية واستهلاك اليوم فوراً. |
 | 📱 **الاستهلاك لكل تطبيق (ETW)** | تتبع دقيق لاستهلاك كل برنامج وعملية (Process) على جهازك مع فلترة حسب (اليوم / 7 أيام / الدورة / 30 يوماً). |
-| 🌐 **الوجهات والتوقيت** | تبويب «الوجهات» يجمّع المواقع والخوادم تحت نطاقها الرئيسي (مثل `googlevideo.com`)، وبالضغط على أي تطبيق ترى إلى أين ذهبت بياناته بالضبط. تبويب «التوقيت» يعرض الاستهلاك حسب ساعات اليوم وأوقات الذروة. التتبع التفصيلي يتطلب تشغيل البرنامج كمسؤول (Administrator). |
+| 🌐 **الوجهات والتوقيت** | تبويب «الوجهات» يجمّع المواقع والخوادم تحت نطاقها الرئيسي (مثل `googlevideo.com`)، وبالضغط على أي تطبيق ترى إلى أين ذهبت بياناته بالضبط. تبويب «التوقيت» يعرض الاستهلاك حسب ساعات اليوم وأوقات الذروة. |
+| 📡 **رادار أجهزة الشبكة والراوتر** | كشف كافة الأجهزة والهواتف المتصلة بالراوتر والواي فاي وعناوين IP و MAC الخاصة بها. |
+| 📑 **تقرير دورة الفوترة الشامل** | ملخص مالي واستهلاكي كامل للدورة قابل للطباعة (`Print to PDF`)، تصدير ملفات `CSV`، ونسخ ملخص نصي فوري. |
+| 🌙 **حساب الساعات الليلية المجانية** | إمكانية تحديد نافذة تحميل ليلي (مثلاً 2:00 ص إلى 8:00 ص) لحساب استهلاكها بشكل مستقل أو استثنائها من الرصيد. |
+| 💰 **الحساب المالي والتكلفة** | حساب تكلفة الجيجابايت، تكلفة استهلاك اليوم، وتكلفة الاستهلاك المتوقع بالعملة المحلية (ج.م / ر.س / $). |
+| 🚨 **كشف تسريب البيانات بالخلفية** | تنبيه ذكي فوري عند رصد سحب بيانات مرتفع ومستمر (أعلى من 3.5 MB/s) في الخلفية. |
+| 🌱 **وضع التوفير (Eco Mode)** | تحذيرات مشددة عند الاقتراب من تجاوز الحصة اليومية الآمنة لترشيد الباقة. |
 | 🎯 **الحصة اليومية الآمنة** | خوارزمية ذكية تحسب `المتبقي ÷ الأيام المتبقية` لتعطيك سقفاً يومياً محدداً يضمن بقاء الباقة حتى آخر يوم. |
 | 🔮 **نظام التنبؤ الذكي** | يتنبأ بتاريخ نفاد الباقة الفعلي بناءً على متوسط وتيرة استهلاكك اليومي مقارنة بدورة الفوترة. |
 | 📅 **دورة فوترة قابلة للتخصيص** | حدد يوم تجديد باقتك (من 1 إلى 31)، ويتولى البرنامج إدارة بدايات ونهايات الشهور تلقائياً بما فيها الأشهر الكبيسة. |
@@ -318,9 +325,15 @@ We believe network telemetry belongs exclusively to the user.
 - [x] Quota forecasting and safe daily allowance calculator.
 - [x] Windows notification alerts & system tray integration.
 - [x] Per-application data consumption breakdown via Windows Event Tracing (ETW).
-- [ ] Direct router telemetry integration (SNMP / TR-064 / Router web scraping) to track all household devices.
-- [ ] Floating desktop mini-widget / overlay.
-- [ ] Exportable monthly audit reports (PDF & Excel).
+- [x] Floating desktop mini-widget (always-on-top, draggable).
+- [x] Local network & Wi-Fi device radar (ARP neighbor scanner).
+- [x] Exportable monthly audit reports (Print to PDF & CSV export).
+- [x] Night free-hours quota calculation window.
+- [x] Plan financials and cost-per-GB calculator.
+- [x] Background high-speed leak anomaly detection alert.
+- [x] Eco Mode with strict allowance guarding.
+- [ ] Direct router telemetry integration (SNMP / TR-064 / Router scraping).
+- [ ] Windows Taskbar native speedometer integration.
 
 ---
 

@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('api', {
   getTrackerStatus: () => ipcRenderer.invoke('tracker:status'),
   relaunchAsAdmin: () => ipcRenderer.invoke('admin:relaunch'),
   getIcon: (p) => ipcRenderer.invoke('icon:get', p),
+  scanNetwork: () => ipcRenderer.invoke('network:scan'),
+  toggleWidget: (show) => ipcRenderer.invoke('widget:toggle', show),
+  focusWindow: () => ipcRenderer.invoke('window:focus'),
   onTick: (cb) => {
     const h = (_e, data) => cb(data);
     ipcRenderer.on('tick', h);

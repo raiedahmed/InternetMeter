@@ -3,7 +3,11 @@ const path = require('path');
 
 const DEFAULTS = () => ({
   version: 2,
-  settings: { quotaGB: 200, cycleDay: 1, alerts: [50, 80, 95], autoStart: false, configured: false },
+  settings: {
+    quotaGB: 200, cycleDay: 1, alerts: [50, 80, 95], autoStart: false, configured: false,
+    showWidget: false, leakAlert: true, cost: 0, currency: 'ج.م',
+    nightEnabled: false, nightStart: 2, nightEnd: 8, nightDeduct: false, ecoMode: false,
+  },
   // daily[YYYY-MM-DD] = { d, u, h: [24 رقماً], apps: { key: { n, p, fd, d, u, ips: { ip: [d, u] } } } }
   daily: {},
   names: {}, // ip -> hostname

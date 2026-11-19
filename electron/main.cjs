@@ -10,11 +10,13 @@ const { execFile, spawn } = require('child_process');
 const isDev = process.argv.includes('--dev');
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
 
-let win, tray, store, monitor, calc, tracker, names, isAdmin = false;
+let win, widgetWin, tray, store, monitor, calc, tracker, names, isAdmin = false;
 const iconCache = new Map();
 let quitting = false;
 let lastCheck = 0;
 let speed = { down: 0, up: 0 };
+let highSpeedSeconds = 0;
+let lastLeakAlert = 0;
 
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => showWindow());
@@ -27,7 +29,7 @@ function showWindow() {
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1040, height: 760, minWidth: 880, minHeight: 640,
+    width: 1060, height: 780, minWidth: 880, minHeight: 640,
     title: 'عدّاد الإنترنت',
     backgroundColor: '#0b1020',
     icon: ICON,
@@ -47,16 +49,65 @@ function createWindow() {
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
 
+function createWidgetWindow() {
+  if (widgetWin && !widgetWin.isDestroyed()) {
+    widgetWin.show();
+    return;
+  }
+  const primaryDisplay = require('electron').screen.getPrimaryDisplay();
+  const { width } = primaryDisplay.workAreaSize;
+
+  widgetWin = new BrowserWindow({
+    width: 240, height: 76,
+    x: width - 260, y: 40,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    hasShadow: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  const url = isDev ? 'http://localhost:5173/#widget' : pathToFileURL(path.join(__dirname, '..', 'dist', 'index.html')).href + '#widget';
+  widgetWin.loadURL(url);
+  widgetWin.on('closed', () => { widgetWin = null; });
+}
+
+function toggleWidget(show) {
+  if (show === undefined) show = !store.state.settings.showWidget;
+  store.state.settings.showWidget = show;
+  store.touch(); store.save();
+  if (show) {
+    createWidgetWindow();
+  } else if (widgetWin && !widgetWin.isDestroyed()) {
+    widgetWin.close();
+  }
+  buildTrayMenu();
+}
+
 const STR = {
   ar: {
     app: 'عدّاد الإنترنت', open: 'فتح العدّاد', quit: 'خروج',
+    toggleWidget: 'إظهار / إخفاء الويدجت العائم',
     alertTitle: (l) => `⚠️ استهلكت ${l}% من الباقة`,
     alertBody: (rem, safe) => `المتبقي ${rem} — الحصة اليومية الآمنة ${safe}`,
+    leakTitle: '⚠️ تنبيه استهلاك بيانات مرتفع بالخلفية',
+    leakBody: (spd) => `تم رصد سحب بيانات مرتفع ومستمر بسرعة ${spd}! تفقد التطبيقات النشطة.`,
   },
   en: {
     app: 'Internet Meter', open: 'Open Internet Meter', quit: 'Quit',
+    toggleWidget: 'Toggle Mini Widget',
     alertTitle: (l) => `⚠️ You have used ${l}% of your plan`,
     alertBody: (rem, safe) => `${rem} left — safe daily allowance ${safe}`,
+    leakTitle: '⚠️ High Background Data Leak Alert',
+    leakBody: (spd) => `High continuous download detected at ${spd}! Check your running apps.`,
   },
 };
 // اللغة المحفوظة، وإلا لغة النظام
@@ -64,8 +115,10 @@ const L = () => STR[store.state.settings.lang || (app.getLocale().toLowerCase().
 
 function buildTrayMenu() {
   const s = L();
+  const widgetActive = !!store.state.settings.showWidget;
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: s.open, click: showWindow },
+    { label: `${s.toggleWidget} (${widgetActive ? '✓' : '✗'})`, click: () => toggleWidget() },
     { type: 'separator' },
     { label: s.quit, click: () => { quitting = true; app.quit(); } },
   ]));
@@ -100,16 +153,44 @@ function checkAlerts() {
   }
 }
 
+function checkLeakAlert() {
+  if (!store.state.settings.leakAlert) return;
+  // سرعة تحميل أعلى من 3.5 ميجابايت/ثانية بشكل مستمر لأكثر من 15 ثانية
+  if (speed.down > 3.5 * 1024 * 1024) {
+    highSpeedSeconds += 1;
+    if (highSpeedSeconds >= 15) {
+      const now = Date.now();
+      if (now - lastLeakAlert > 30 * 60 * 1000) { // تنبيه مرة كل 30 دقيقة
+        lastLeakAlert = now;
+        new Notification({
+          title: L().leakTitle,
+          body: L().leakBody(fmtSpeed(speed.down)),
+          icon: ICON,
+        }).show();
+      }
+    }
+  } else {
+    highSpeedSeconds = Math.max(0, highSpeedSeconds - 2);
+  }
+}
+
 function onSample({ down, up, dt }) {
   store.add(calc.dateKey(), down, up, new Date().getHours());
   speed = dt > 0 ? { down: down / dt, up: up / dt } : speed;
   const t = store.state.daily[calc.dateKey()] || { d: 0, u: 0 };
   const today = { d: t.d, u: t.u };
+  const tickData = { downBps: speed.down, upBps: speed.up, todayKey: calc.dateKey(), today };
+
   if (win && !win.isDestroyed() && win.isVisible()) {
-    win.webContents.send('tick', { downBps: speed.down, upBps: speed.up, todayKey: calc.dateKey(), today });
+    win.webContents.send('tick', tickData);
   }
+  if (widgetWin && !widgetWin.isDestroyed()) {
+    widgetWin.webContents.send('tick', tickData);
+  }
+
   const now = Date.now();
   if (now - lastCheck > 30000) { lastCheck = now; checkAlerts(); }
+  checkLeakAlert();
   if (tray) tray.setToolTip(`↓ ${fmtSpeed(speed.down)}  ↑ ${fmtSpeed(speed.up)}`);
 }
 
@@ -120,7 +201,6 @@ function applyAutoStart() {
   if (isDev) return;
   const want = !!store.state.settings.autoStart;
   if (isAdmin) {
-    // البرنامج يعمل كمسؤول (لتتبع التطبيقات)، ومفاتيح Run لا تُشغّل برامج مرتفعة الصلاحية، فنستخدم مهمة مجدولة
     app.setLoginItemSettings({ openAtLogin: false });
     if (want) {
       ps(`$a=New-ScheduledTaskAction -Execute ${q(process.execPath)} -Argument '--hidden'; ` +
@@ -149,6 +229,40 @@ function relaunchAsAdmin() {
 
 const checkAdmin = () => new Promise((res) => execFile('net.exe', ['session'], { windowsHide: true }, (e) => res(!e)));
 
+function scanLocalNetwork() {
+  return new Promise((resolve) => {
+    execFile('arp', ['-a'], { windowsHide: true }, (err, stdout) => {
+      if (err || !stdout) return resolve({ devices: [], gateway: null, count: 0 });
+      const devices = [];
+      const lines = stdout.split(/\r?\n/);
+      let gateway = null;
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        const parts = trimmed.split(/\s+/);
+        if (parts.length >= 3 && /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/.test(parts[0])) {
+          const ip = parts[0];
+          const mac = parts[1].replace(/-/g, ':').toLowerCase();
+          const alloc = parts[2];
+          // تجاهل عناوين البث والمجموعات
+          if (ip.startsWith('224.') || ip.startsWith('239.') || ip === '255.255.255.255' || mac === 'ff:ff:ff:ff:ff:ff') {
+            continue;
+          }
+          const isRouter = ip.endsWith('.1') || ip.endsWith('.254');
+          if (isRouter && !gateway) gateway = ip;
+          devices.push({
+            ip,
+            mac,
+            type: isRouter ? 'router' : 'device',
+            alloc,
+          });
+        }
+      }
+      resolve({ devices, gateway, count: devices.length });
+    });
+  });
+}
+
 function startTracking() {
   names = new Names(store);
   names.start();
@@ -171,13 +285,18 @@ app.whenReady().then(async () => {
   isAdmin = await checkAdmin();
 
   ipcMain.handle('state:get', () => {
-    const daily = {}; // الواجهة تحتاج الإجمالي فقط؛ التفاصيل تُطلب عند الحاجة
-    for (const [k, v] of Object.entries(store.state.daily)) daily[k] = { d: v.d, u: v.u };
+    const daily = {};
+    for (const [k, v] of Object.entries(store.state.daily)) {
+      daily[k] = { d: v.d, u: v.u, h: v.h };
+    }
     return { settings: store.state.settings, daily, todayKey: calc.dateKey() };
   });
   ipcMain.handle('detail:get', (_e, from, to) => compute(store, names, from, to));
   ipcMain.handle('tracker:status', () => ({ status: tracker ? tracker.status : 'starting', detail: tracker?.detail || '', admin: isAdmin }));
   ipcMain.handle('admin:relaunch', () => relaunchAsAdmin());
+  ipcMain.handle('network:scan', () => scanLocalNetwork());
+  ipcMain.handle('widget:toggle', (_e, show) => toggleWidget(show));
+  ipcMain.handle('window:focus', () => showWindow());
   ipcMain.handle('icon:get', async (_e, p) => {
     if (!p) return '';
     if (iconCache.has(p)) return iconCache.get(p);
@@ -190,11 +309,17 @@ app.whenReady().then(async () => {
     store.state.settings = { ...store.state.settings, ...patch, configured: true };
     store.touch(); store.save(); applyAutoStart(); lastCheck = 0;
     if (tray) buildTrayMenu();
+    if (store.state.settings.showWidget && (!widgetWin || widgetWin.isDestroyed())) {
+      createWidgetWindow();
+    } else if (!store.state.settings.showWidget && widgetWin && !widgetWin.isDestroyed()) {
+      widgetWin.close();
+    }
     return store.state.settings;
   });
 
   createWindow();
   createTray();
+  if (store.state.settings.showWidget) createWidgetWindow();
   if (process.argv.includes('--hidden')) win.once('ready-to-show', () => win.hide());
 
   monitor = new Monitor(store.state.counters);
@@ -202,7 +327,7 @@ app.whenReady().then(async () => {
   monitor.on('error', (e) => console.error('monitor', e));
   monitor.start();
   startTracking();
-  // للاختبارات الآلية: --exit-after=SECONDS يغلق البرنامج بعد مدة (مع حفظ البيانات)
+
   const ex = process.argv.find((a) => a.startsWith('--exit-after='));
   if (ex) setTimeout(() => { quitting = true; app.quit(); }, Number(ex.split('=')[1]) * 1000);
   setInterval(() => store.save(), 10000);
