@@ -7,9 +7,19 @@ import Gauge from './components/Gauge';
 import DailyChart from './components/DailyChart';
 import SettingsDialog from './components/SettingsDialog';
 import { AppsView, HostsView, TimeView, TopApps } from './components/Details';
+import NetworkView from './components/NetworkView';
+import ReportView from './components/ReportView';
+import Widget from './components/Widget';
 
-type Tab = 'overview' | 'apps' | 'hosts' | 'time';
-const TABS: [Tab, Key][] = [['overview', 'tabOverview'], ['apps', 'tabApps'], ['hosts', 'tabHosts'], ['time', 'tabTime']];
+type Tab = 'overview' | 'apps' | 'hosts' | 'time' | 'network' | 'report';
+const TABS: [Tab, Key][] = [
+  ['overview', 'tabOverview'],
+  ['apps', 'tabApps'],
+  ['hosts', 'tabHosts'],
+  ['time', 'tabTime'],
+  ['network', 'tabNetwork'],
+  ['report', 'tabReport'],
+];
 
 const ACTIVITIES: { name: Key; per: number; icon: string }[] = [
   { name: 'actYoutube', per: 1.5 * GB, icon: '▶' },
@@ -19,6 +29,11 @@ const ACTIVITIES: { name: Key; per: number; icon: string }[] = [
 ];
 
 export default function App() {
+  // إذا كان الرابط هو #widget، اعرض الويدجت العائم مباشرة
+  if (typeof window !== 'undefined' && window.location.hash === '#widget') {
+    return <Widget />;
+  }
+
   const [settings, setSettings] = useState<Settings | null>(null);
   const [daily, setDaily] = useState<Daily>({});
   const [speed, setSpeed] = useState({ down: 0, up: 0 });
@@ -76,14 +91,30 @@ export default function App() {
     if (settings.configured) setSettings(await api.saveSettings({ lang: next }));
   };
 
+  const toggleWidget = async () => {
+    const next = !settings.showWidget;
+    await api.toggleWidget(next);
+    setSettings({ ...settings, showWidget: next });
+  };
+
   return (
     <I18nContext.Provider value={i18n}>
       <div className="app">
         <header>
-          <div className="brand"><span className="logo">↓</span> {t('appName')}</div>
+          <div className="brand">
+            <span className="logo">↓</span> {t('appName')}
+            {settings.ecoMode && (
+              <span className="pill ok" style={{ fontSize: '0.75rem', marginInlineStart: 8 }}>
+                🌱 {t('ecoMode')}
+              </span>
+            )}
+          </div>
           <div className="live">
             <span className="pill down" title={t('downNow')}>↓ <b dir="ltr">{fmtSpeed(speed.down)}</b></span>
             <span className="pill up" title={t('upNow')}>↑ <b dir="ltr">{fmtSpeed(speed.up)}</b></span>
+            <button className="btn ghost" onClick={toggleWidget} title={t('widgetDesc')}>
+              🪟 {t('widgetTitle')}
+            </button>
             <button className="btn ghost" onClick={toggleLang}>{t('switchLang')}</button>
             <button className="btn ghost" onClick={() => setDialog(true)}>{t('settings')}</button>
           </div>
@@ -98,6 +129,8 @@ export default function App() {
         {tab === 'apps' && <AppsView cycleStart={stats.startKey} />}
         {tab === 'hosts' && <HostsView cycleStart={stats.startKey} />}
         {tab === 'time' && <TimeView cycleStart={stats.startKey} />}
+        {tab === 'network' && <NetworkView />}
+        {tab === 'report' && <ReportView settings={settings} stats={stats} />}
 
         {tab === 'overview' && <>
         <div className={`banner ${banner.cls}`}>{banner.text}</div>
@@ -118,6 +151,12 @@ export default function App() {
           <Stat title={t('safeDaily')} value={fmtBytes(stats.dailySafe)} hint={t('safeHint')} accent={stats.todayUsed > stats.dailySafe ? 'var(--amber)' : undefined} />
           <Stat title={t('avgDaily')} value={fmtBytes(stats.avgDaily)} hint={t('sinceStart')} />
           <Stat title={t('forecast')} value={fmtBytes(stats.projected)} hint={stats.projected > stats.quota ? t('overPlan') : t('withinPlan')} accent={stats.projected > stats.quota ? 'var(--red)' : undefined} />
+          {settings.cost ? (
+            <Stat title={t('todayCost')} value={`${stats.todayCost.toFixed(2)} ${stats.currency}`} hint={`سعر الجيجا: ${stats.costPerGB.toFixed(2)} ${stats.currency}`} />
+          ) : null}
+          {settings.nightEnabled ? (
+            <Stat title={t('nightStat')} value={fmtBytes(stats.nightUsed)} hint={settings.nightDeduct ? 'مخصومة من الباقة' : 'ساعات مجانية غير مخصومة'} />
+          ) : null}
         </section>
 
         <TopApps onMore={() => setTab('apps')} />

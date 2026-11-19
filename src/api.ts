@@ -20,6 +20,9 @@ export interface TrackerStatus {
   admin?: boolean;
 }
 
+export interface NetDevice { ip: string; mac: string; type: 'router' | 'device'; alloc?: string }
+export interface NetScanResult { devices: NetDevice[]; gateway: string | null; count: number }
+
 export interface Api {
   getState(): Promise<AppState>;
   saveSettings(patch: Partial<Settings>): Promise<Settings>;
@@ -27,6 +30,9 @@ export interface Api {
   getTrackerStatus(): Promise<TrackerStatus>;
   relaunchAsAdmin(): Promise<void>;
   getIcon(path: string): Promise<string>;
+  scanNetwork(): Promise<NetScanResult>;
+  toggleWidget(show?: boolean): Promise<void>;
+  focusWindow(): Promise<void>;
   onTick(cb: (t: Tick) => void): () => void;
   onTracker(cb: (s: TrackerStatus) => void): () => void;
 }
@@ -81,6 +87,17 @@ function mockApi(): Api {
     getTrackerStatus: async () => ({ status: 'running', admin: true }),
     relaunchAsAdmin: async () => {},
     getIcon: async () => '',
+    scanNetwork: async () => ({
+      devices: [
+        { ip: '192.168.1.1', mac: '00:11:22:33:44:55', type: 'router' },
+        { ip: '192.168.1.5', mac: '44:66:88:aa:cc:ee', type: 'device' },
+        { ip: '192.168.1.9', mac: 'aa:bb:cc:dd:ee:ff', type: 'device' },
+      ],
+      gateway: '192.168.1.1',
+      count: 3,
+    }),
+    toggleWidget: async () => {},
+    focusWindow: async () => {},
     onTick: (cb) => {
       const id = setInterval(() => {
         const down = Math.random() * 6 * 1024 ** 2, up = Math.random() * 0.4 * 1024 ** 2;

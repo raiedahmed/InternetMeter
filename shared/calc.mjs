@@ -8,6 +8,12 @@ const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
 const clampedDate = (y, m, day) => new Date(y, m, Math.min(day, daysInMonth(y, m)));
 
+/** فحص هل الساعة ضمن نطاق الساعات الليلية */
+export function isNightHour(hour, start, end) {
+  if (start < end) return hour >= start && hour < end;
+  return hour >= start || hour < end;
+}
+
 /** حدود دورة الفوترة التي تحتوي اليوم الحالي */
 export function cycleBounds(cycleDay, now = new Date()) {
   const today = midnight(now);
@@ -24,15 +30,38 @@ export function computeStats(settings, daily, now = new Date()) {
   const startKey = dateKey(start);
   const quota = settings.quotaGB * GB;
 
-  let tracked = 0;
+  const nightEnabled = !!settings.nightEnabled;
+  const nStart = settings.nightStart ?? 2;
+  const nEnd = settings.nightEnd ?? 8;
+  const nightDeduct = settings.nightDeduct ?? false; // الافتراضي: لا تُخصم من الباقة الأساسية
+
+  let rawTracked = 0;
+  let nightUsed = 0;
   const series = [];
+
   for (let i = 0; i < cycleLen; i++) {
     const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
     if (day > today) break;
-    const v = daily[dateKey(day)] || { d: 0, u: 0 };
-    tracked += v.d + v.u;
-    series.push({ key: dateKey(day), d: v.d, u: v.u, total: v.d + v.u });
+    const key = dateKey(day);
+    const v = daily[key] || { d: 0, u: 0 };
+    const dayTotal = v.d + v.u;
+    rawTracked += dayTotal;
+
+    let dayNight = 0;
+    if (nightEnabled && Array.isArray(v.h)) {
+      for (let hr = 0; hr < 24; hr++) {
+        if (isNightHour(hr, nStart, nEnd)) {
+          dayNight += v.h[hr] || 0;
+        }
+      }
+    }
+    nightUsed += dayNight;
+    series.push({ key, d: v.d, u: v.u, total: dayTotal, night: dayNight });
   }
+
+  // إذا كانت الباقة الليلية مفعلة وغير مخصومة من الباقة، لا تحسب في المستخدم الأساسي
+  const tracked = nightEnabled && !nightDeduct ? Math.max(0, rawTracked - nightUsed) : rawTracked;
+
   const offset = settings.offset && settings.offset.cycle === startKey ? settings.offset.bytes : 0;
   const used = Math.max(0, tracked + offset);
   const remaining = quota - used;
@@ -53,9 +82,18 @@ export function computeStats(settings, daily, now = new Date()) {
   const pct = quota > 0 ? used / quota : 0;
   const status = remaining <= 0 ? 'over' : runOutDate ? 'danger' : pct > 0.8 ? 'warn' : 'ok';
 
+  // الحساب المالي
+  const cost = Number(settings.cost) || 0;
+  const currency = settings.currency || (settings.lang === 'en' ? 'EGP' : 'ج.م');
+  const costPerGB = (cost > 0 && settings.quotaGB > 0) ? (cost / settings.quotaGB) : 0;
+  const todayCost = ((todayRec.d + todayRec.u) / GB) * costPerGB;
+  const usedCost = (used / GB) * costPerGB;
+  const projectedCost = (projected / GB) * costPerGB;
+
   return {
-    quota, used, tracked, offset, remaining, pct, cycleLen, daysLeft, avgDaily, projected,
+    quota, used, tracked, rawTracked, offset, remaining, pct, cycleLen, daysLeft, avgDaily, projected,
     dailySafe, runOutDate, status, startKey, nextKey: dateKey(next), series,
     todayUsed: todayRec.d + todayRec.u, todayDown: todayRec.d, todayUp: todayRec.u,
+    nightUsed, costPerGB, todayCost, usedCost, projectedCost, currency,
   };
 }
