@@ -1,7 +1,7 @@
 {
   "name": "internet-meter",
   "productName": "عدّاد الإنترنت",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "برنامج ويندوز لحساب استهلاك الإنترنت ومتابعة الباقة الشهرية",
   "main": "electron/main.cjs",
   "private": true,
@@ -9,9 +9,10 @@
     "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron . --dev\"",
     "web": "vite",
     "start": "vite build && electron .",
-    "build": "tsc --noEmit && vite build && electron-builder --win",
+    "build": "npm run dist",
     "typecheck": "tsc --noEmit",
-    "dist": "vite build && electron-builder --win --publish never"
+    "dist": "npm run helper && vite build && electron-builder --win --publish never",
+    "helper": "dotnet publish helper/NetTracker -c Release -o helper/bin"
   },
   "build": {
     "appId": "com.raied.internetmeter",
@@ -26,7 +27,8 @@
     "win": {
       "target": "nsis",
       "icon": "assets/icon.png",
-      "artifactName": "InternetMeter-Setup-${version}.exe"
+      "artifactName": "InternetMeter-Setup-${version}.exe",
+      "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
       "oneClick": false,
@@ -37,7 +39,16 @@
     "directories": {
       "output": "release"
     },
-    "executableName": "InternetMeter"
+    "executableName": "InternetMeter",
+    "extraResources": [
+      {
+        "from": "helper/bin",
+        "to": "helper",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   },
   "dependencies": {
     "react": "^19.3.1",
