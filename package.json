@@ -31,14 +31,14 @@
         "portable"
       ],
       "icon": "assets/icon.png",
-      "artifactName": "InternetMeter-Setup-${version}.exe",
       "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "عدّاد الإنترنت",
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "artifactName": "InternetMeter-Setup-${version}.exe"
     },
     "directories": {
       "output": "release"
@@ -52,7 +52,10 @@
           "**/*"
         ]
       }
-    ]
+    ],
+    "portable": {
+      "artifactName": "InternetMeter-Portable-${version}.exe"
+    }
   },
   "dependencies": {
     "react": "^19.3.1",
