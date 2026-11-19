@@ -31,7 +31,7 @@
         "portable"
       ],
       "icon": "assets/icon.png",
-      "requestedExecutionLevel": "requireAdministrator"
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,
