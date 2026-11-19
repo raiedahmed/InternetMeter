@@ -1,7 +1,7 @@
 {
   "name": "internet-meter",
   "productName": "عدّاد الإنترنت",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "برنامج ويندوز لحساب استهلاك الإنترنت ومتابعة الباقة الشهرية",
   "main": "electron/main.cjs",
   "private": true,

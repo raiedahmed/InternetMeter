@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { GB, cycleBounds, dateKey, type Settings, type Stats } from '../../shared/calc.mjs';
+import { useI18n, type Lang } from '../i18n';
 
 interface Props {
   settings: Settings;
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export default function SettingsDialog({ settings, stats, firstRun, onCancel, onSave }: Props) {
+  const { t, lang } = useI18n();
+  const [newLang, setNewLang] = useState<Lang>(lang);
   const [quota, setQuota] = useState(String(settings.quotaGB));
   const [day, setDay] = useState(String(settings.cycleDay));
   const [isp, setIsp] = useState('');
@@ -21,7 +24,7 @@ export default function SettingsDialog({ settings, stats, firstRun, onCancel, on
   const valid = q > 0 && Number.isInteger(d) && d >= 1 && d <= 31;
 
   const save = () => {
-    const patch: Partial<Settings> = { quotaGB: q, cycleDay: d, alerts, autoStart };
+    const patch: Partial<Settings> = { quotaGB: q, cycleDay: d, alerts, autoStart, lang: newLang };
     // مزامنة مع الرقم الذي تعرضه شركة الإنترنت: الفرق بينه وبين ما قاسه البرنامج يُحفظ كإزاحة للدورة الحالية
     if (isp.trim() !== '' && Number(isp) >= 0) {
       const { start } = cycleBounds(d, new Date());
@@ -33,34 +36,40 @@ export default function SettingsDialog({ settings, stats, firstRun, onCancel, on
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && !firstRun && onCancel()}>
       <div className="dialog">
-        <h2>{firstRun ? 'مرحباً! لنُعدّ باقتك' : 'الإعدادات'}</h2>
+        <h2>{firstRun ? t('welcome') : t('settingsTitle')}</h2>
 
-        <label>سعة الباقة الشهرية (جيجابايت)
+        <label>{t('quota')}
           <input type="number" min="1" value={quota} onChange={(e) => setQuota(e.target.value)} autoFocus />
         </label>
-        <label>يوم تجديد الباقة من الشهر (1 – 31)
+        <label>{t('renewDay')}
           <input type="number" min="1" max="31" value={day} onChange={(e) => setDay(e.target.value)} />
         </label>
-        <label>الاستهلاك الحالي حسب شركة الإنترنت (جيجابايت) — اختياري
-          <input type="number" min="0" step="0.01" placeholder="مثال: 85.4" value={isp} onChange={(e) => setIsp(e.target.value)} />
-          <span className="note">يُستخدم لمعايرة البرنامج مع رقم الشركة، خاصةً إن كنت قد استهلكت جزءاً قبل التثبيت.</span>
+        <label>{t('ispUsage')}
+          <input type="number" min="0" step="0.01" placeholder={t('ispPlaceholder')} value={isp} onChange={(e) => setIsp(e.target.value)} />
+          <span className="note">{t('ispNote')}</span>
         </label>
 
-        <div className="lbl">تنبيهات عند بلوغ</div>
+        <div className="lbl">{t('alertsAt')}</div>
         <div className="chips">
           {[50, 80, 90, 95].map((v) => (
             <button key={v} type="button" className={`chip ${alerts.includes(v) ? 'on' : ''}`} onClick={() => toggle(v)}>{v}%</button>
           ))}
         </div>
 
+        <div className="lbl">{t('language')}</div>
+        <div className="chips">
+          <button type="button" className={`chip ${newLang === 'ar' ? 'on' : ''}`} onClick={() => setNewLang('ar')}>العربية</button>
+          <button type="button" className={`chip ${newLang === 'en' ? 'on' : ''}`} onClick={() => setNewLang('en')}>English</button>
+        </div>
+
         <label className="check">
           <input type="checkbox" checked={autoStart} onChange={(e) => setAutoStart(e.target.checked)} />
-          تشغيل البرنامج تلقائياً مع ويندوز
+          {t('autoStart')}
         </label>
 
         <div className="actions">
-          {!firstRun && <button className="btn ghost" onClick={onCancel}>إلغاء</button>}
-          <button className="btn primary" disabled={!valid} onClick={save}>حفظ</button>
+          {!firstRun && <button className="btn ghost" onClick={onCancel}>{t('cancel')}</button>}
+          <button className="btn primary" disabled={!valid} onClick={save}>{t('save')}</button>
         </div>
       </div>
     </div>

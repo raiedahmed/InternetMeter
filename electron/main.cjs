@@ -43,15 +43,36 @@ function createWindow() {
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
 
+const STR = {
+  ar: {
+    app: 'عدّاد الإنترنت', open: 'فتح العدّاد', quit: 'خروج',
+    alertTitle: (l) => `⚠️ استهلكت ${l}% من الباقة`,
+    alertBody: (rem, safe) => `المتبقي ${rem} — الحصة اليومية الآمنة ${safe}`,
+  },
+  en: {
+    app: 'Internet Meter', open: 'Open Internet Meter', quit: 'Quit',
+    alertTitle: (l) => `⚠️ You have used ${l}% of your plan`,
+    alertBody: (rem, safe) => `${rem} left — safe daily allowance ${safe}`,
+  },
+};
+// اللغة المحفوظة، وإلا لغة النظام
+const L = () => STR[store.state.settings.lang || (app.getLocale().toLowerCase().startsWith('ar') ? 'ar' : 'en')];
+
+function buildTrayMenu() {
+  const s = L();
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: s.open, click: showWindow },
+    { type: 'separator' },
+    { label: s.quit, click: () => { quitting = true; app.quit(); } },
+  ]));
+  if (win) win.setTitle(s.app);
+}
+
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(ICON));
-  tray.setToolTip('عدّاد الإنترنت');
+  tray.setToolTip(L().app);
   tray.on('click', showWindow);
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'فتح العدّاد', click: showWindow },
-    { type: 'separator' },
-    { label: 'خروج', click: () => { quitting = true; app.quit(); } },
-  ]));
+  buildTrayMenu();
 }
 
 const fmt = (b) => (b >= 1024 ** 3 ? (b / 1024 ** 3).toFixed(2) + ' GB' : (b / 1024 ** 2).toFixed(0) + ' MB');
@@ -67,8 +88,8 @@ function checkAlerts() {
       s.alerted.levels.push(lvl);
       store.touch();
       new Notification({
-        title: `⚠️ استهلكت ${lvl}% من الباقة`,
-        body: `المتبقي ${fmt(Math.max(0, st.remaining))} — الحصة اليومية الآمنة ${fmt(st.dailySafe)}`,
+        title: L().alertTitle(lvl),
+        body: L().alertBody(fmt(Math.max(0, st.remaining)), fmt(st.dailySafe)),
         icon: ICON,
       }).show();
     }
@@ -103,6 +124,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('settings:save', (_e, patch) => {
     store.state.settings = { ...store.state.settings, ...patch, configured: true };
     store.touch(); store.save(); applyAutoStart(); lastCheck = 0;
+    if (tray) buildTrayMenu();
     return store.state.settings;
   });
 

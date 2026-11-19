@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { computeStats, GB, type Daily, type Settings } from '../shared/calc.mjs';
 import { api, type Tick } from './api';
-import { fmtBytes, fmtDate, fmtSpeed, fromKey } from './format';
+import { fmtBytes, fmtSpeed, fromKey } from './format';
+import { I18nContext, detectLang, makeI18n, type Key, type Lang } from './i18n';
 import Gauge from './components/Gauge';
 import DailyChart from './components/DailyChart';
 import SettingsDialog from './components/SettingsDialog';
 
-const ACTIVITIES = [
-  { name: 'ساعات يوتيوب (1080p)', per: 1.5 * GB, icon: '▶' },
-  { name: 'ساعات مكالمات فيديو', per: 0.8 * GB, icon: '📹' },
-  { name: 'أفلام HD', per: 3 * GB, icon: '🎬' },
-  { name: 'ساعات موسيقى', per: 0.07 * GB, icon: '♪' },
+const ACTIVITIES: { name: Key; per: number; icon: string }[] = [
+  { name: 'actYoutube', per: 1.5 * GB, icon: '▶' },
+  { name: 'actCalls', per: 0.8 * GB, icon: '📹' },
+  { name: 'actMovies', per: 3 * GB, icon: '🎬' },
+  { name: 'actMusic', per: 0.07 * GB, icon: '♪' },
 ];
 
 export default function App() {
@@ -19,98 +20,119 @@ export default function App() {
   const [speed, setSpeed] = useState({ down: 0, up: 0 });
   const [now, setNow] = useState(() => new Date());
   const [dialog, setDialog] = useState(false);
+  const [lang, setLang] = useState<Lang>(detectLang);
+  const i18n = useMemo(() => makeI18n(lang), [lang]);
+  const { t, fmtDate } = i18n;
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    document.title = t('appName');
+  }, [lang, t]);
 
   useEffect(() => {
     api.getState().then((s) => {
       setSettings(s.settings);
+      if (s.settings.lang) setLang(s.settings.lang);
       setDaily(s.daily);
       if (!s.settings.configured) setDialog(true);
     });
-    const off = api.onTick((t: Tick) => {
-      setSpeed({ down: t.downBps, up: t.upBps });
-      setDaily((d) => ({ ...d, [t.todayKey]: t.today }));
+    const off = api.onTick((tk: Tick) => {
+      setSpeed({ down: tk.downBps, up: tk.upBps });
+      setDaily((d) => ({ ...d, [tk.todayKey]: tk.today }));
       setNow(new Date());
     });
     return off;
   }, []);
 
   const stats = useMemo(() => (settings ? computeStats(settings, daily, now) : null), [settings, daily, now]);
-  if (!settings || !stats) return <div className="loading">جارٍ التحميل…</div>;
+  if (!settings || !stats) return <div className="loading">{t('loading')}</div>;
 
   const color = { ok: 'var(--green)', warn: 'var(--amber)', danger: 'var(--red)', over: 'var(--red)' }[stats.status];
 
   const banner = (() => {
-    if (stats.status === 'over') return { cls: 'danger', text: 'انتهت باقتك لهذه الدورة.' };
+    if (stats.status === 'over') return { cls: 'danger', text: t('bannerOver') };
     if (stats.runOutDate && stats.runOutDate.getTime() > now.getTime())
-      return { cls: 'danger', text: `بمعدل استهلاكك الحالي ستنتهي باقتك يوم ${fmtDate(stats.runOutDate)} — قبل نهاية الدورة (${fmtDate(fromKey(stats.nextKey))}).` };
-    if (stats.status === 'warn') return { cls: 'warn', text: 'اقتربت من حد الباقة، لكنها ما تزال تكفي بمعدلك الحالي.' };
-    return { cls: 'ok', text: 'ممتاز! باقتك ستكفيك حتى نهاية الدورة بمعدل استهلاكك الحالي.' };
+      return { cls: 'danger', text: t('bannerRunOut', { date: fmtDate(stats.runOutDate), end: fmtDate(fromKey(stats.nextKey)) }) };
+    if (stats.status === 'warn') return { cls: 'warn', text: t('bannerWarn') };
+    return { cls: 'ok', text: t('bannerOk') };
   })();
 
   const saveSettings = async (patch: Partial<Settings>) => {
-    setSettings(await api.saveSettings(patch));
+    const s = await api.saveSettings(patch);
+    setSettings(s);
+    if (s.lang) setLang(s.lang);
     setDialog(false);
   };
 
+  const toggleLang = async () => {
+    const next: Lang = lang === 'ar' ? 'en' : 'ar';
+    setLang(next);
+    if (settings.configured) setSettings(await api.saveSettings({ lang: next }));
+  };
+
   return (
-    <div className="app">
-      <header>
-        <div className="brand"><span className="logo">↓</span> عدّاد الإنترنت</div>
-        <div className="live">
-          <span className="pill down" title="سرعة التحميل الآن">↓ <b dir="ltr">{fmtSpeed(speed.down)}</b></span>
-          <span className="pill up" title="سرعة الرفع الآن">↑ <b dir="ltr">{fmtSpeed(speed.up)}</b></span>
-          <button className="btn ghost" onClick={() => setDialog(true)}>⚙ الإعدادات</button>
-        </div>
-      </header>
-
-      <div className={`banner ${banner.cls}`}>{banner.text}</div>
-
-      <section className="hero card">
-        <Gauge pct={stats.pct} color={color} label={fmtBytes(Math.max(0, stats.remaining))} sub="المتبقي" />
-        <div className="hero-info">
-          <div className="big" dir="ltr">{fmtBytes(stats.used)} <small>/ {settings.quotaGB} GB</small></div>
-          <div className="muted">
-            دورة الفوترة: {fmtDate(fromKey(stats.startKey))} ← {fmtDate(fromKey(stats.nextKey))} · متبقي {stats.daysLeft} يوم
+    <I18nContext.Provider value={i18n}>
+      <div className="app">
+        <header>
+          <div className="brand"><span className="logo">↓</span> {t('appName')}</div>
+          <div className="live">
+            <span className="pill down" title={t('downNow')}>↓ <b dir="ltr">{fmtSpeed(speed.down)}</b></span>
+            <span className="pill up" title={t('upNow')}>↑ <b dir="ltr">{fmtSpeed(speed.up)}</b></span>
+            <button className="btn ghost" onClick={toggleLang}>{t('switchLang')}</button>
+            <button className="btn ghost" onClick={() => setDialog(true)}>{t('settings')}</button>
           </div>
-          <div className="bar"><i style={{ width: `${Math.min(100, stats.pct * 100)}%`, background: color }} /></div>
-        </div>
-      </section>
+        </header>
 
-      <section className="grid">
-        <Stat title="استهلاك اليوم" value={fmtBytes(stats.todayUsed)} hint={`↓ ${fmtBytes(stats.todayDown)} · ↑ ${fmtBytes(stats.todayUp)}`} />
-        <Stat title="الحصة اليومية الآمنة" value={fmtBytes(stats.dailySafe)} hint="كي تكفيك الباقة حتى النهاية" accent={stats.todayUsed > stats.dailySafe ? 'var(--amber)' : undefined} />
-        <Stat title="متوسط استهلاكك اليومي" value={fmtBytes(stats.avgDaily)} hint="منذ بداية الدورة" />
-        <Stat title="التوقع لنهاية الدورة" value={fmtBytes(stats.projected)} hint={stats.projected > stats.quota ? 'أعلى من باقتك ⚠' : 'ضمن حدود باقتك'} accent={stats.projected > stats.quota ? 'var(--red)' : undefined} />
-      </section>
+        <div className={`banner ${banner.cls}`}>{banner.text}</div>
 
-      <section className="card">
-        <h3>الاستهلاك اليومي خلال الدورة</h3>
-        <DailyChart series={stats.series} safe={stats.dailySafe} />
-      </section>
-
-      <section className="card">
-        <h3>ماذا يعني المتبقي لك؟ <small>(تقديري)</small></h3>
-        <div className="acts">
-          {ACTIVITIES.map((a) => (
-            <div key={a.name} className="act">
-              <span className="ai">{a.icon}</span>
-              <b dir="ltr">{Math.max(0, Math.floor(stats.remaining / a.per))}</b>
-              <span className="muted">{a.name}</span>
+        <section className="hero card">
+          <Gauge pct={stats.pct} color={color} label={fmtBytes(Math.max(0, stats.remaining))} sub={t('remaining')} />
+          <div className="hero-info">
+            <div className="big" dir="ltr">{fmtBytes(stats.used)} <small>/ {settings.quotaGB} GB</small></div>
+            <div className="muted">
+              {t('cycle', { a: fmtDate(fromKey(stats.startKey)), b: fmtDate(fromKey(stats.nextKey)), n: stats.daysLeft })}
             </div>
-          ))}
-        </div>
-      </section>
+            <div className="bar"><i style={{ width: `${Math.min(100, stats.pct * 100)}%`, background: color }} /></div>
+          </div>
+        </section>
 
-      {dialog && (
-        <SettingsDialog
-          settings={settings}
-          stats={stats}
-          firstRun={!settings.configured}
-          onCancel={() => setDialog(false)}
-          onSave={saveSettings}
-        />
-      )}
-    </div>
+        <section className="grid">
+          <Stat title={t('today')} value={fmtBytes(stats.todayUsed)} hint={`↓ ${fmtBytes(stats.todayDown)} · ↑ ${fmtBytes(stats.todayUp)}`} />
+          <Stat title={t('safeDaily')} value={fmtBytes(stats.dailySafe)} hint={t('safeHint')} accent={stats.todayUsed > stats.dailySafe ? 'var(--amber)' : undefined} />
+          <Stat title={t('avgDaily')} value={fmtBytes(stats.avgDaily)} hint={t('sinceStart')} />
+          <Stat title={t('forecast')} value={fmtBytes(stats.projected)} hint={stats.projected > stats.quota ? t('overPlan') : t('withinPlan')} accent={stats.projected > stats.quota ? 'var(--red)' : undefined} />
+        </section>
+
+        <section className="card">
+          <h3>{t('dailyChart')}</h3>
+          <DailyChart series={stats.series} safe={stats.dailySafe} />
+        </section>
+
+        <section className="card">
+          <h3>{t('meaning')} <small>{t('approx')}</small></h3>
+          <div className="acts">
+            {ACTIVITIES.map((a) => (
+              <div key={a.name} className="act">
+                <span className="ai">{a.icon}</span>
+                <b dir="ltr">{Math.max(0, Math.floor(stats.remaining / a.per))}</b>
+                <span className="muted">{t(a.name)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {dialog && (
+          <SettingsDialog
+            settings={settings}
+            stats={stats}
+            firstRun={!settings.configured}
+            onCancel={() => setDialog(false)}
+            onSave={saveSettings}
+          />
+        )}
+      </div>
+    </I18nContext.Provider>
   );
 }
 
